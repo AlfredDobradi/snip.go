@@ -1,9 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"golang.org/x/crypto/ssh/terminal"
-	"os"
 )
 
 func login() {
@@ -32,14 +32,16 @@ func upload() {
 	filemap := make(map[string]GistFile)
 	filemap["file.txt"] = GistFile{content: "This is an example content"}
 
-	//gist := Gist{description: "example", public: false, files: filemap}
-	//fmt.Printf("%v", filemap)
+	gist := Gist{description: "example", public: false, files: filemap}
+	fmt.Print(gist)
+	jsongist, err := json.Marshal(gist)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println(string(jsongist))
+	}
 }
 
 func main() {
-	if os.Args[1] == "--login" {
-		login()
-	} else {
-		upload()
-	}
+	upload()
 }
