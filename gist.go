@@ -1,9 +1,15 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/crypto/ssh/terminal"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"strings"
 )
 
 func login() {
@@ -19,29 +25,77 @@ func login() {
 }
 
 type Gist struct {
-	description string              `json:"description"`
-	public      bool                `json:"public"`
-	files       map[string]GistFile `json:"files"`
+	Description string              `json:"description"`
+	Public      bool                `json:"public"`
+	Files       map[string]GistFile `json:"files"`
 }
 
 type GistFile struct {
-	content string `json:"content"`
+	Content string `json:"content"`
 }
 
-func upload() {
-	filemap := make(map[string]GistFile)
-	filemap["file.txt"] = GistFile{content: "This is an example content"}
+func upload(files []string) {
+	var public string = "y"
+	var pbool bool = true
 
-	gist := Gist{description: "example", public: false, files: filemap}
-	fmt.Print(gist)
-	jsongist, err := json.Marshal(gist)
+	// Read info
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("Description: ")
+	description, _ := reader.ReadString('\n')
+	fmt.Print("Public (Y/n): ")
+	fmt.Scan(&public)
+	if public == "N" || public == "n" {
+		pbool = false
+	}
+
+	// Create file map
+	filemap := make(map[string]GistFile)
+
+	for i := range files {
+		filename := files[i]
+		content, _ := ioutil.ReadFile(files[i])
+		trimmed := strings.Trim(string(content), "\n")
+		filemap[filename] = GistFile{Content: trimmed}
+	}
+
+	gist := Gist{Description: description, Public: pbool, Files: filemap}
+	gistJson, err := json.Marshal(gist)
 	if err != nil {
 		fmt.Println(err)
 	} else {
-		fmt.Println(string(jsongist))
+		// POST /gists
+		url := "https://api.github.com/gists"
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(gistJson))
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			panic(err)
+		}
+
+		defer resp.Body.Close()
+
+		body, _ := ioutil.ReadAll(resp.Body)
+		var bodyObject interface{}
+		json.Unmarshal(body, &bodyObject)
+		m := bodyObject.(map[string]interface{})
+
+		if resp.Status == "200" || resp.Status == "201 Created" {
+			fmt.Println(m["html_url"])
+		} else {
+			fmt.Println("response Status:", resp.Status)
+			fmt.Println(m)
+		}
 	}
 }
 
 func main() {
-	upload()
+	if len(os.Args) == 1 {
+		fmt.Println("Usage: gist file1 file2 .. fileN")
+	} else {
+		files := os.Args[1:]
+		upload(files)
+	}
 }
