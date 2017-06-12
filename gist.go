@@ -5,23 +5,91 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/crypto/ssh/terminal"
+	// "golang.org/x/crypto/ssh/terminal"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
+	"regexp"
 )
 
+type Authorization struct {
+	Scopes []string `json:"scopes"`
+	Client_id string `json:"client_id"`
+	Note string `json:"note"`
+	Note_url string `json:"note_url"`
+}
+
+func contains(haystack []string, needle string) bool {
+	res, _ := regexp.MatchString("X-GitHub-OTP", haystack[0])
+	return res
+}
+
 func login() {
-	var username, pstring string
-	fmt.Println("Logging in to Github...")
-	fmt.Print("Username: ")
-	fmt.Scan(&username)
-	fmt.Print("Password: ")
-	password, _ := terminal.ReadPassword(0)
-	fmt.Print("\n")
-	pstring = string(password)
-	fmt.Println(username, pstring)
+	var twofa string
+	// var username, pstring string
+	// fmt.Println("Logging in to Github...")
+	// fmt.Print("Username: ")
+	// fmt.Scan(&username)
+	// fmt.Print("Token: ")
+	// password, _ := terminal.ReadPassword(0)
+	// fmt.Print("\n")
+	// pstring = string(password)
+	// fmt.Println(username, pstring)
+
+    user := ""
+    token := ""
+
+    scopes := []string{"gist"}
+
+    body := Authorization{
+    	Scopes: scopes,
+    	Note: "Gist.go",
+    	Note_url: "https://github.com/AlfredDobradi/gist.go",
+    	Client_id: "",
+    }
+    bodyJson, _ := json.Marshal(body)
+    bodyBuf := bytes.NewBuffer(bodyJson)
+    req, _ := http.NewRequest("POST", "https://api.github.com/authorizations", bodyBuf)
+    req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(user, token)
+
+	fmt.Print(req)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+
+	defer resp.Body.Close()
+
+	res, _ := ioutil.ReadAll(resp.Body)
+	var bodyObject interface{}
+	json.Unmarshal(res, &bodyObject)
+	m := bodyObject.(map[string]interface{})
+
+	if resp.Status == "201 Created" {
+		fmt.Println(m["token"])
+		b := m["token"].([]byte)
+		fmt.Printf("%T", b)
+		// err := ioutil.WriteFile("Auth", m["token"], 0644)
+		// if err != nil {
+		// 	panic(err)
+		// }
+	} else if resp.Status == "403 Forbidden" {
+		if contains(resp.Header["Access-Control-Expose-Headers"], "X-GitHub-OTP") {
+			fmt.Println("2FA: ")
+			fmt.Scan(&twofa)
+
+			req.Header.Set("X-GitHub-OTP", twofa)
+			fmt.Print(req)
+		} else {
+			fmt.Println("response Status:", resp.Status)
+			fmt.Println(m)
+		}
+	}
 }
 
 type Gist struct {
@@ -95,7 +163,9 @@ func main() {
 	if len(os.Args) == 1 {
 		fmt.Println("Usage: gist file1 file2 .. fileN")
 	} else {
-		files := os.Args[1:]
-		upload(files)
+		login()
+
+		// files := os.Args[1:]
+		// upload(files)
 	}
 }
