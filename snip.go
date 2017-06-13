@@ -5,19 +5,19 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	// "golang.org/x/crypto/ssh/terminal"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
 	"regexp"
+	"strings"
 )
 
 type Authorization struct {
-	Scopes []string `json:"scopes"`
-	Client_id string `json:"client_id"`
-	Note string `json:"note"`
-	Note_url string `json:"note_url"`
+	Scopes        []string `json:"scopes"`
+	Client_id     string   `json:"client_id"`
+	Client_secret string   `json:"client_secret"`
+	Note          string   `json:"note"`
+	Note_url      string   `json:"note_url"`
 }
 
 func contains(haystack []string, needle string) bool {
@@ -25,35 +25,42 @@ func contains(haystack []string, needle string) bool {
 	return res
 }
 
+func makeRequest(body *bytes.Buffer, headers map[string]string) {
+	fmt.Print(body, headers)
+}
+
 func login() {
 	var twofa string
-	// var username, pstring string
-	// fmt.Println("Logging in to Github...")
-	// fmt.Print("Username: ")
-	// fmt.Scan(&username)
-	// fmt.Print("Token: ")
-	// password, _ := terminal.ReadPassword(0)
-	// fmt.Print("\n")
-	// pstring = string(password)
-	// fmt.Println(username, pstring)
+	var pstring, username string
+	fmt.Println("Logging in to Github...")
 
-    user := ""
-    token := ""
+	fmt.Print("Username: ")
+	fmt.Scan(&username)
 
-    scopes := []string{"gist"}
+	fmt.Print("Password: ")
+	password, _ := terminal.ReadPassword(0)
+	fmt.Print("\n")
+	pstring = string(password)
 
-    body := Authorization{
-    	Scopes: scopes,
-    	Note: "Gist.go",
-    	Note_url: "https://github.com/AlfredDobradi/gist.go",
-    	Client_id: "",
-    }
-    bodyJson, _ := json.Marshal(body)
-    bodyBuf := bytes.NewBuffer(bodyJson)
-    req, _ := http.NewRequest("POST", "https://api.github.com/authorizations", bodyBuf)
-    req.Header.Set("Accept", "application/vnd.github.v3+json")
+	fmt.Print("Two factor auth: ")
+	fmt.Scan(&twofa)
+
+	scopes := []string{"gist"}
+
+	body := Authorization{
+		Scopes:        scopes,
+		Note:          "Gist.go",
+		Note_url:      "https://github.com/AlfredDobradi/gist.go",
+		Client_id:     "",
+		Client_secret: "",
+	}
+	bodyJson, _ := json.Marshal(body)
+	bodyBuf := bytes.NewBuffer(bodyJson)
+	req, _ := http.NewRequest("POST", "https://api.github.com/authorizations", bodyBuf)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(user, token)
+	req.Header.Set("X-GitHub-OTP", twofa)
+	req.SetBasicAuth(username, pstring)
 
 	fmt.Print(req)
 
@@ -72,23 +79,14 @@ func login() {
 
 	if resp.Status == "201 Created" {
 		fmt.Println(m["token"])
-		b := m["token"].([]byte)
-		fmt.Printf("%T", b)
-		// err := ioutil.WriteFile("Auth", m["token"], 0644)
-		// if err != nil {
-		// 	panic(err)
-		// }
-	} else if resp.Status == "403 Forbidden" {
-		if contains(resp.Header["Access-Control-Expose-Headers"], "X-GitHub-OTP") {
-			fmt.Println("2FA: ")
-			fmt.Scan(&twofa)
-
-			req.Header.Set("X-GitHub-OTP", twofa)
-			fmt.Print(req)
-		} else {
-			fmt.Println("response Status:", resp.Status)
-			fmt.Println(m)
+		token := m["token"].(string)
+		err := ioutil.WriteFile("auth.dat", []byte(token), 0644)
+		if err != nil {
+			panic(err)
 		}
+	} else if resp.Status == "403 Forbidden" {
+		fmt.Println("response Status:", resp.Status)
+		fmt.Println(m)
 	}
 }
 
