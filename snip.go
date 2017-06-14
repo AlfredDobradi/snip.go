@@ -42,7 +42,7 @@ func createBodyBuffer(body interface{}) (*bytes.Buffer, error) {
 }
 
 // func makeRequest(endpoint string, body *bytes.Buffer, headers map[string]string) {
-	
+
 // }
 
 func panicOnError(err error) {
@@ -179,6 +179,7 @@ func upload(files []string) {
 
 	// POST /gists
 	url := "https://api.github.com/gists"
+	// REFACTOR START
 	req, sendReqErr := http.NewRequest("POST", url, gistJSON)
 	panicOnError(sendReqErr)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
@@ -202,6 +203,10 @@ func upload(files []string) {
 	var bodyObject interface{}
 	respBodyErr := json.Unmarshal(body, &bodyObject)
 	panicOnError(respBodyErr)
+
+	// REFACTOR END
+	// function should return map[string]interface{}
+
 	m := bodyObject.(map[string]interface{})
 
 	if resp.Status == "200" || resp.Status == "201 Created" {
