@@ -45,8 +45,8 @@ func login() {
 	fmt.Print("\n")
 	pstring = string(password)
 
-	fmt.Print("Two factor auth: ")
-	fmt.Scan(&twofa)
+	fmt.Print("Two factor auth (optional): ")
+	fmt.Scanln(&twofa)
 
 	scopes := []string{"gist"}
 
@@ -62,7 +62,9 @@ func login() {
 	req, _ := http.NewRequest("POST", "https://api.github.com/authorizations", bodyBuf)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-GitHub-OTP", twofa)
+	if twofa != "" {
+		req.Header.Set("X-GitHub-OTP", twofa)
+	}
 	req.SetBasicAuth(username, pstring)
 
 	client := &http.Client{}
