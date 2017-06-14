@@ -15,32 +15,40 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
+// Authorization represents auth data sent to Github
 type Authorization struct {
-	Scopes        []string `json:"scopes"`
-	Client_id     string   `json:"client_id"`
-	Client_secret string   `json:"client_secret"`
-	Note          string   `json:"note"`
-	Note_url      string   `json:"note_url"`
+	Scopes       []string `json:"scopes"`
+	ClientID     string   `json:"client_id"`
+	ClientSecret string   `json:"client_secret"`
+	Note         string   `json:"note"`
+	NoteURL      string   `json:"note_url"`
 }
 
 func contains(haystack []string, needle string) bool {
-	res, _ := regexp.MatchString("X-GitHub-OTP", haystack[0])
+	res, err := regexp.MatchString("X-GitHub-OTP", haystack[0])
+	panicOnError(err)
 	return res
 }
 
 func createBodyBuffer(body interface{}) (*bytes.Buffer, error) {
-	bodyJson, err := json.Marshal(body)
+	bodyJSON, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 
-	bodyBuf := bytes.NewBuffer(bodyJson)
+	bodyBuf := bytes.NewBuffer(bodyJSON)
 
 	return bodyBuf, nil
 }
 
-func makeRequest(body *bytes.Buffer, headers map[string]string) {
-	fmt.Print(body, headers)
+// func makeRequest(endpoint string, body *bytes.Buffer, headers map[string]string) {
+	
+// }
+
+func panicOnError(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
 
 func login() {
@@ -49,24 +57,27 @@ func login() {
 	fmt.Println("Logging in to Github...")
 
 	fmt.Print("Username: ")
-	fmt.Scan(&username)
+	_, unameErr := fmt.Scan(&username)
+	panicOnError(unameErr)
 
 	fmt.Print("Password: ")
-	password, _ := terminal.ReadPassword(0)
+	password, err := terminal.ReadPassword(0)
+	panicOnError(err)
 	fmt.Print("\n")
 	pstring = string(password)
 
 	fmt.Print("Two factor auth (optional): ")
-	fmt.Scanln(&twofa)
+	_, twoFaErr := fmt.Scanln(&twofa)
+	panicOnError(twoFaErr)
 
 	scopes := []string{"gist"}
 
 	body := Authorization{
-		Scopes:        scopes,
-		Note:          "Gist.go",
-		Note_url:      "https://github.com/AlfredDobradi/gist.go",
-		Client_id:     "",
-		Client_secret: "",
+		Scopes:       scopes,
+		Note:         "Gist.go",
+		NoteURL:      "https://github.com/AlfredDobradi/gist.go",
+		ClientID:     "",
+		ClientSecret: "",
 	}
 
 	bodyBuf, err := createBodyBuffer(body)
@@ -74,7 +85,9 @@ func login() {
 		panic(err)
 	}
 
-	req, _ := http.NewRequest("POST", "https://api.github.com/authorizations", bodyBuf)
+	req, authReqErr := http.NewRequest("POST", "https://api.github.com/authorizations", bodyBuf)
+	panicOnError(authReqErr)
+
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("Content-Type", "application/json")
 	if twofa != "" {
@@ -90,36 +103,39 @@ func login() {
 
 	defer resp.Body.Close()
 
-	res, _ := ioutil.ReadAll(resp.Body)
-	var bodyObject interface{}
-	json.Unmarshal(res, &bodyObject)
-	m := bodyObject.(map[string]interface{})
+	res, authResErr := ioutil.ReadAll(resp.Body)
+	panicOnError(authResErr)
+	var bodyObject map[string]interface{}
+	authResUnmarshalErr := json.Unmarshal(res, &bodyObject)
+	panicOnError(authResUnmarshalErr)
 
 	if resp.Status == "201 Created" {
-		token := m["token"].(string)
+		token := bodyObject["token"].(string)
 		err := ioutil.WriteFile("auth.dat", []byte(token), 0644)
 		if err != nil {
 			panic(err)
 		}
 	} else if resp.Status == "403 Forbidden" {
 		fmt.Println("response Status:", resp.Status)
-		fmt.Println(m)
+		fmt.Println(bodyObject)
 	}
 }
 
+// Gist represents the gist structure sent to Github
 type Gist struct {
 	Description string              `json:"description"`
 	Public      bool                `json:"public"`
 	Files       map[string]GistFile `json:"files"`
 }
 
+// GistFile is a single file object
 type GistFile struct {
 	Content string `json:"content"`
 }
 
 func upload(files []string) {
-	var public string = "y"
-	var pbool bool = true
+	public := "y"
+	pbool := true
 
 	var token string
 
@@ -134,9 +150,11 @@ func upload(files []string) {
 	// Read info
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("Description: ")
-	description, _ := reader.ReadString('\n')
+	description, descErr := reader.ReadString('\n')
+	panicOnError(descErr)
 	fmt.Print("Public (Y/n): ")
-	fmt.Scanln(&public)
+	_, publicErr := fmt.Scanln(&public)
+	panicOnError(publicErr)
 	if public == "N" || public == "n" {
 		pbool = false
 	}
@@ -149,20 +167,20 @@ func upload(files []string) {
 		if _, err := os.Stat(filename); os.IsNotExist(err) {
 			panic(err)
 		}
-		content, _ := ioutil.ReadFile(files[i])
+		content, fileErr := ioutil.ReadFile(files[i])
+		panicOnError(fileErr)
 		trimmed := strings.Trim(string(content), "\n")
 		filemap[filename] = GistFile{Content: trimmed}
 	}
 
 	gist := Gist{Description: description, Public: pbool, Files: filemap}
-	gistJson, err := createBodyBuffer(gist)
-	if err != nil {
-		panic(err)
-	}
+	gistJSON, bodyErr := createBodyBuffer(gist)
+	panicOnError(bodyErr)
 
 	// POST /gists
 	url := "https://api.github.com/gists"
-	req, err := http.NewRequest("POST", url, gistJson)
+	req, sendReqErr := http.NewRequest("POST", url, gistJSON)
+	panicOnError(sendReqErr)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("Content-Type", "application/json")
 
@@ -178,9 +196,12 @@ func upload(files []string) {
 
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, sendResErr := ioutil.ReadAll(resp.Body)
+	panicOnError(sendResErr)
+
 	var bodyObject interface{}
-	json.Unmarshal(body, &bodyObject)
+	respBodyErr := json.Unmarshal(body, &bodyObject)
+	panicOnError(respBodyErr)
 	m := bodyObject.(map[string]interface{})
 
 	if resp.Status == "200" || resp.Status == "201 Created" {
@@ -200,7 +221,7 @@ func main() {
 	} else {
 		flag.Parse()
 
-		if *isLogin == true {
+		if *isLogin {
 			login()
 		} else {
 			files := os.Args[1:]
