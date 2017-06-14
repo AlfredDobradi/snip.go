@@ -41,9 +41,37 @@ func createBodyBuffer(body interface{}) (*bytes.Buffer, error) {
 	return bodyBuf, nil
 }
 
-// func makeRequest(endpoint string, body *bytes.Buffer, headers map[string]string) {
-	
-// }
+func makeRequest(endpoint string, body *bytes.Buffer, headers map[string]string, auth map[string]string) (map[string]interface{}, string) {
+	url := "https://api.github.com" + endpoint
+	req, sendReqErr := http.NewRequest("POST", url, body)
+	panicOnError(sendReqErr)
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	if auth != nil {
+		req.SetBasicAuth(auth["username"], auth["password"])
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+
+	defer resp.Body.Close()
+
+	respBody, sendResErr := ioutil.ReadAll(resp.Body)
+	panicOnError(sendResErr)
+
+	var bodyObject map[string]interface{}
+
+	respBodyErr := json.Unmarshal(respBody, &bodyObject)
+	panicOnError(respBodyErr)
+
+	return bodyObject, resp.Status
+}
 
 func panicOnError(err error) {
 	if err != nil {
@@ -85,39 +113,31 @@ func login() {
 		panic(err)
 	}
 
-	req, authReqErr := http.NewRequest("POST", "https://api.github.com/authorizations", bodyBuf)
-	panicOnError(authReqErr)
+	endpoint := "/authorizations"
+	headers := make(map[string]string)
 
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Content-Type", "application/json")
+	headers["Accept"] = "application/vnd.github.v3+json"
+	headers["Content-Type"] = "application/json"
+
 	if twofa != "" {
-		req.Header.Set("X-GitHub-OTP", twofa)
-	}
-	req.SetBasicAuth(username, pstring)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
+		headers["X-GitHub-OTP"] = twofa
 	}
 
-	defer resp.Body.Close()
+	auth := make(map[string]string)
+	auth["username"] = username
+	auth["password"] = pstring
 
-	res, authResErr := ioutil.ReadAll(resp.Body)
-	panicOnError(authResErr)
-	var bodyObject map[string]interface{}
-	authResUnmarshalErr := json.Unmarshal(res, &bodyObject)
-	panicOnError(authResUnmarshalErr)
+	respBody, status := makeRequest(endpoint, bodyBuf, headers, auth)
 
-	if resp.Status == "201 Created" {
-		token := bodyObject["token"].(string)
+	if status == "201 Created" {
+		token := respBody["token"].(string)
 		err := ioutil.WriteFile("auth.dat", []byte(token), 0644)
 		if err != nil {
 			panic(err)
 		}
-	} else if resp.Status == "403 Forbidden" {
-		fmt.Println("response Status:", resp.Status)
-		fmt.Println(bodyObject)
+	} else {
+		fmt.Println("response Status:", status)
+		fmt.Println(respBody)
 	}
 }
 
@@ -178,39 +198,23 @@ func upload(files []string) {
 	panicOnError(bodyErr)
 
 	// POST /gists
-	url := "https://api.github.com/gists"
-	req, sendReqErr := http.NewRequest("POST", url, gistJSON)
-	panicOnError(sendReqErr)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Content-Type", "application/json")
+	endpoint := "/gists"
+	headers := make(map[string]string)
+
+	headers["Accept"] = "application/vnd.github.v3+json"
+	headers["Content-Type"] = "application/json"
 
 	if token != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("token %s", token))
+		headers["Authorization"] = fmt.Sprintf("token %s", token)
 	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-
-	defer resp.Body.Close()
-
-	body, sendResErr := ioutil.ReadAll(resp.Body)
-	panicOnError(sendResErr)
-
-	var bodyObject interface{}
-	respBodyErr := json.Unmarshal(body, &bodyObject)
-	panicOnError(respBodyErr)
-	m := bodyObject.(map[string]interface{})
-
-	if resp.Status == "200" || resp.Status == "201 Created" {
-		fmt.Println(m["html_url"])
+	respBody, status := makeRequest(endpoint, gistJSON, headers, nil)
+	if status == "200 OK" || status == "201 Created" {
+		fmt.Println(respBody["html_url"])
 	} else {
-		fmt.Println("response Status:", resp.Status)
-		fmt.Println(m)
+		fmt.Println("response Status:", status)
+		fmt.Println(respBody)
 	}
-
 }
 
 func main() {
