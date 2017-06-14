@@ -4,12 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 type Authorization struct {
@@ -62,8 +65,6 @@ func login() {
 	req.Header.Set("X-GitHub-OTP", twofa)
 	req.SetBasicAuth(username, pstring)
 
-	fmt.Print(req)
-
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -78,7 +79,6 @@ func login() {
 	m := bodyObject.(map[string]interface{})
 
 	if resp.Status == "201 Created" {
-		fmt.Println(m["token"])
 		token := m["token"].(string)
 		err := ioutil.WriteFile("auth.dat", []byte(token), 0644)
 		if err != nil {
@@ -104,12 +104,22 @@ func upload(files []string) {
 	var public string = "y"
 	var pbool bool = true
 
+	var token string
+
+	if _, err := os.Stat("auth.dat"); err == nil {
+		dat, err := ioutil.ReadFile("auth.dat")
+		if err != nil {
+			panic(err)
+		}
+		token = string(dat)
+	}
+
 	// Read info
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("Description: ")
 	description, _ := reader.ReadString('\n')
 	fmt.Print("Public (Y/n): ")
-	fmt.Scan(&public)
+	fmt.Scanln(&public)
 	if public == "N" || public == "n" {
 		pbool = false
 	}
@@ -119,6 +129,9 @@ func upload(files []string) {
 
 	for i := range files {
 		filename := files[i]
+		if _, err := os.Stat(filename); os.IsNotExist(err) {
+			panic(err)
+		}
 		content, _ := ioutil.ReadFile(files[i])
 		trimmed := strings.Trim(string(content), "\n")
 		filemap[filename] = GistFile{Content: trimmed}
@@ -134,6 +147,10 @@ func upload(files []string) {
 		req, err := http.NewRequest("POST", url, bytes.NewBuffer(gistJson))
 		req.Header.Set("Accept", "application/vnd.github.v3+json")
 		req.Header.Set("Content-Type", "application/json")
+
+		if token != "" {
+			req.Header.Set("Authorization", fmt.Sprintf("token %s", token))
+		}
 
 		client := &http.Client{}
 		resp, err := client.Do(req)
@@ -158,12 +175,18 @@ func upload(files []string) {
 }
 
 func main() {
+	isLogin := flag.Bool("login", false, "Login mode")
+
 	if len(os.Args) == 1 {
 		fmt.Println("Usage: gist file1 file2 .. fileN")
 	} else {
-		login()
+		flag.Parse()
 
-		// files := os.Args[1:]
-		// upload(files)
+		if *isLogin == true {
+			login()
+		} else {
+			files := os.Args[1:]
+			upload(files)
+		}
 	}
 }
