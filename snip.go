@@ -28,6 +28,17 @@ func contains(haystack []string, needle string) bool {
 	return res
 }
 
+func createBodyBuffer(body interface{}) (*bytes.Buffer, error) {
+	bodyJson, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+
+	bodyBuf := bytes.NewBuffer(bodyJson)
+
+	return bodyBuf, nil
+}
+
 func makeRequest(body *bytes.Buffer, headers map[string]string) {
 	fmt.Print(body, headers)
 }
@@ -57,8 +68,12 @@ func login() {
 		Client_id:     "",
 		Client_secret: "",
 	}
-	bodyJson, _ := json.Marshal(body)
-	bodyBuf := bytes.NewBuffer(bodyJson)
+
+	bodyBuf, err := createBodyBuffer(body)
+	if err != nil {
+		panic(err)
+	}
+
 	req, _ := http.NewRequest("POST", "https://api.github.com/authorizations", bodyBuf)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("Content-Type", "application/json")
@@ -140,40 +155,41 @@ func upload(files []string) {
 	}
 
 	gist := Gist{Description: description, Public: pbool, Files: filemap}
-	gistJson, err := json.Marshal(gist)
+	gistJson, err := createBodyBuffer(gist)
 	if err != nil {
-		fmt.Println(err)
-	} else {
-		// POST /gists
-		url := "https://api.github.com/gists"
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(gistJson))
-		req.Header.Set("Accept", "application/vnd.github.v3+json")
-		req.Header.Set("Content-Type", "application/json")
-
-		if token != "" {
-			req.Header.Set("Authorization", fmt.Sprintf("token %s", token))
-		}
-
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			panic(err)
-		}
-
-		defer resp.Body.Close()
-
-		body, _ := ioutil.ReadAll(resp.Body)
-		var bodyObject interface{}
-		json.Unmarshal(body, &bodyObject)
-		m := bodyObject.(map[string]interface{})
-
-		if resp.Status == "200" || resp.Status == "201 Created" {
-			fmt.Println(m["html_url"])
-		} else {
-			fmt.Println("response Status:", resp.Status)
-			fmt.Println(m)
-		}
+		panic(err)
 	}
+
+	// POST /gists
+	url := "https://api.github.com/gists"
+	req, err := http.NewRequest("POST", url, gistJson)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Content-Type", "application/json")
+
+	if token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("token %s", token))
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+
+	defer resp.Body.Close()
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	var bodyObject interface{}
+	json.Unmarshal(body, &bodyObject)
+	m := bodyObject.(map[string]interface{})
+
+	if resp.Status == "200" || resp.Status == "201 Created" {
+		fmt.Println(m["html_url"])
+	} else {
+		fmt.Println("response Status:", resp.Status)
+		fmt.Println(m)
+	}
+
 }
 
 func main() {
