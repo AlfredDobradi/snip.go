@@ -18,7 +18,8 @@ type authorization struct {
 	NoteURL      string   `json:"note_url"`
 }
 
-func login() {
+// Login sends the authentication request
+func Login() {
 	var twofa string
 	var pstring, username string
 	fmt.Println("Logging in to Github...")
