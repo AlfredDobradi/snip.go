@@ -103,7 +103,7 @@ func login() {
 	body := Authorization{
 		Scopes:       scopes,
 		Note:         "Gist.go",
-		NoteURL:      "https://github.com/AlfredDobradi/gist.go",
+		NoteURL:      "https://github.com/AlfredDobradi/snip.go",
 		ClientID:     "",
 		ClientSecret: "",
 	}
